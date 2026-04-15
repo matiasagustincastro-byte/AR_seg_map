@@ -1,0 +1,31 @@
+{
+  "name": "csv-ingestion-backend",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/index.ts",
+    "start": "node dist/index.js",
+    "build": "tsc -p tsconfig.json",
+    "db:migrate": "tsx src/db/migrate.ts",
+    "db:seed-enrichment": "tsx src/enrichment/seed.ts",
+    "ingest:once": "tsx src/jobs/run-once.ts"
+  },
+  "dependencies": {
+    "@fastify/cors": "^10.0.2",
+    "csv-parse": "^5.5.6",
+    "dotenv": "^16.4.7",
+    "fastify": "^5.2.1",
+    "node-cron": "^3.0.3",
+    "pg": "^8.13.1",
+    "xlsx": "^0.18.5",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/node-cron": "^3.0.11",
+    "@types/pg": "^8.11.10",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  }
+}

@@ -1,0 +1,331 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Seguridad Argentina API</title>
+    <link rel="stylesheet" href="/assets/app.css" />
+  </head>
+  <body>
+    <header class="topbar">
+      <a class="brand" href="#operacion">Seguridad Argentina API</a>
+      <nav aria-label="Principal">
+        <a href="#operacion">Operacion</a>
+        <a href="#analisis">Analisis</a>
+        <a href="#inteligencia">Inteligencia</a>
+        <a href="#periodistas">Periodistas</a>
+        <a href="#registros">Registros</a>
+      </nav>
+    </header>
+
+    <main>
+      <section id="operacion" class="hero">
+        <div class="hero-copy">
+          <p class="eyebrow">Consola operativa</p>
+          <h1>Mapa Argentino del delito</h1>
+          <p class="lede">Datos oficiales del delito en Argentina, sincronizados cada 24 hs y listos para comparar por provincia, año y tipo de delito.</p>
+          <div class="hero-actions">
+            <button id="syncButton" type="button">Ejecutar sincronizacion</button>
+            <button id="refreshButton" type="button" class="secondary">Actualizar panel</button>
+            <span id="healthBadge" class="status-pill">Chequeando</span>
+            <span id="scheduleBadge" class="status-pill schedule-pill">Sync auto cada 24 hs</span>
+          </div>
+          <p id="statusMessage" class="status-line" role="status">Conectando con el backend...</p>
+        </div>
+
+        <div class="summary-strip" aria-label="Resumen operativo">
+          <article>
+            <span>Registros</span>
+            <strong id="recordsMetric">0</strong>
+          </article>
+          <article>
+            <span>Datasets</span>
+            <strong id="datasetsMetric">0</strong>
+          </article>
+          <article>
+            <span>Recursos</span>
+            <strong id="resourcesMetric">0</strong>
+          </article>
+        </div>
+      </section>
+
+      <section id="analisis" class="workspace alt">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Comparador</p>
+            <h2>Graficar evolucion</h2>
+          </div>
+        </div>
+
+        <form id="analysisForm" class="control-grid">
+          <label>
+            Metrica
+            <select id="metricSelect" name="metric">
+              <option value="cantidad_hechos">Cantidad de hechos</option>
+              <option value="cantidad_victimas">Cantidad de victimas</option>
+              <option value="tasa_hechos">Tasa de hechos</option>
+              <option value="tasa_victimas">Tasa de victimas</option>
+              <option value="tasa_hechos_100k_calculada">Tasa propia de hechos 100k</option>
+              <option value="tasa_victimas_100k_calculada">Tasa propia de victimas 100k</option>
+            </select>
+          </label>
+          <label>
+            Comparar
+            <select id="compareSelect" name="compareBy">
+              <option value="provincia_nombre">Provincias</option>
+              <option value="codigo_delito_snic_nombre">Delitos</option>
+              <option value="anio">Años</option>
+            </select>
+          </label>
+          <label>
+            Año
+            <select id="yearFilter" name="year">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Desde
+            <select id="startYearFilter" name="startYear">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Hasta
+            <select id="endYearFilter" name="endYear">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Provincia
+            <select id="provinceFilter" name="province">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label class="wide">
+            Delito
+            <select id="crimeFilter" name="crime">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label class="wide">
+            Provincias para comparar
+            <select id="compareProvinceFilter" name="provinces" multiple size="4"></select>
+          </label>
+          <div class="analysis-actions">
+            <button id="clearAnalysisButton" type="button" class="secondary">Limpiar consulta</button>
+            <button id="drawChartButton" type="button">Graficar</button>
+          </div>
+        </form>
+
+        <div class="chart-layout">
+          <div class="chart-panel">
+            <canvas id="chartCanvas" width="1000" height="460" aria-label="Grafico comparativo"></canvas>
+          </div>
+          <aside class="chart-summary">
+            <strong id="chartTitle">Sin datos graficados</strong>
+            <p id="chartDescription">Elegí una métrica y compará provincias o delitos por año.</p>
+            <div id="chartLegend" class="legend"></div>
+          </aside>
+        </div>
+
+        <div class="map-layout">
+          <div class="map-panel">
+            <svg id="argentinaMap" viewBox="0 0 420 780" role="img" aria-label="Mapa de Argentina por provincia"></svg>
+          </div>
+          <aside class="map-summary">
+            <strong id="mapTitle">Mapa Argentino del delito</strong>
+            <p id="mapDescription">Los colores van de verde a rojo segun el valor de la métrica seleccionada.</p>
+            <div class="map-scale">
+              <span>Menor</span>
+              <i></i>
+              <span>Mayor</span>
+            </div>
+            <div id="mapTooltip" class="map-tooltip">Seleccioná filtros para ver valores por provincia.</div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="inteligencia" class="workspace">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Inteligencia</p>
+            <h2>Rankings, alertas e informe</h2>
+          </div>
+          <div class="report-actions">
+            <label>
+              Año del informe
+              <select id="reportYearFilter">
+                <option value="">Último disponible</option>
+              </select>
+            </label>
+            <button id="reportButton" type="button">Generar informe PDF</button>
+          </div>
+        </div>
+
+        <div class="insight-grid">
+          <article class="insight-card">
+            <div class="card-title">
+              <span>Ranking automático</span>
+              <select id="rankingTypeFilter">
+                <option value="province_top">Top provincias</option>
+                <option value="crime_growth">Delitos que más crecieron</option>
+                <option value="crime_drop">Delitos que más bajaron</option>
+              </select>
+            </div>
+            <ol id="rankingList" class="ranking-list"></ol>
+          </article>
+
+          <article class="insight-card">
+            <div class="card-title">
+              <span>Alertas</span>
+              <select id="alertThresholdFilter">
+                <option value="15">Cambios desde 15%</option>
+                <option value="25" selected>Cambios desde 25%</option>
+                <option value="40">Cambios desde 40%</option>
+              </select>
+            </div>
+            <div id="alertsList" class="alerts-list"></div>
+          </article>
+
+          <article class="insight-card">
+            <div class="card-title">
+              <span>Tendencia y proyección</span>
+              <button id="trendButton" type="button" class="secondary">Actualizar</button>
+            </div>
+            <canvas id="trendCanvas" class="trend-chart" width="520" height="220" aria-label="Gráfico de tendencia y proyección"></canvas>
+            <div id="trendSummary" class="trend-summary"></div>
+          </article>
+        </div>
+      </section>
+
+      <section id="periodistas" class="workspace alt">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Periodistas</p>
+            <h2>Radar editorial</h2>
+          </div>
+          <div class="journalist-actions">
+            <button id="toggleJournalistRadarButton" type="button" class="secondary" aria-expanded="false" aria-controls="journalistRadarPanel">Mostrar radar</button>
+            <button id="refreshFindingsButton" type="button" hidden>Actualizar hallazgos</button>
+          </div>
+        </div>
+
+        <div id="journalistRadarPanel" class="journalist-radar-panel" hidden>
+          <form class="control-grid journalist-controls">
+            <label>
+              Año
+              <select id="journalistYearFilter">
+                <option value="">Último disponible</option>
+              </select>
+            </label>
+            <label>
+              Métrica
+              <select id="journalistMetricFilter">
+                <option value="cantidad_hechos">Cantidad de hechos</option>
+                <option value="cantidad_victimas">Cantidad de víctimas</option>
+                <option value="tasa_hechos">Tasa de hechos</option>
+                <option value="tasa_victimas">Tasa de víctimas</option>
+                <option value="tasa_hechos_100k_calculada">Tasa propia de hechos 100k</option>
+                <option value="tasa_victimas_100k_calculada">Tasa propia de víctimas 100k</option>
+              </select>
+            </label>
+            <label>
+              Categoría oficial
+              <select id="journalistCategoryFilter">
+                <option value="">Todas</option>
+              </select>
+            </label>
+            <label class="wide">
+              Delito
+              <select id="journalistCrimeFilter">
+                <option value="">Todos</option>
+              </select>
+            </label>
+          </form>
+
+          <div id="journalistFindings" class="findings-grid"></div>
+        </div>
+      </section>
+
+      <section id="registros" class="workspace">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Consulta</p>
+            <h2>Registros normalizados</h2>
+          </div>
+        </div>
+
+        <form id="searchForm" class="control-grid records-controls">
+          <label>
+            Año
+            <select id="recordYearFilter" name="year">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Provincia
+            <select id="recordProvinceFilter" name="province">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label class="wide">
+            Delito
+            <select id="recordCrimeFilter" name="crime">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Ordenar por
+            <select id="sortByFilter" name="sortBy">
+              <option value="anio">Año</option>
+              <option value="provincia_nombre">Provincia</option>
+              <option value="codigo_delito_snic_nombre">Delito</option>
+              <option value="cantidad_hechos">Hechos</option>
+              <option value="cantidad_victimas">Victimas</option>
+              <option value="tasa_hechos">Tasa</option>
+            </select>
+          </label>
+          <label>
+            Dirección
+            <select id="sortDirFilter" name="sortDir">
+              <option value="desc">Descendente</option>
+              <option value="asc">Ascendente</option>
+            </select>
+          </label>
+          <button type="submit">Buscar</button>
+          <button id="clearSearchButton" type="button">Limpiar consulta</button>
+        </form>
+
+        <div class="table-wrap">
+          <div class="table-meta">
+            <span id="resultCount">0 resultados</span>
+            <div>
+              <button id="prevPage" type="button" class="plain">Anterior</button>
+              <button id="nextPage" type="button" class="plain">Siguiente</button>
+            </div>
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>Año</th>
+                <th>Provincia</th>
+                <th>Delito</th>
+                <th>Hechos</th>
+                <th>Victimas</th>
+                <th>Tasa</th>
+              </tr>
+            </thead>
+            <tbody id="recordsBody">
+              <tr>
+                <td colspan="6">Elegí filtros y presioná Buscar para consultar registros.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+    </main>
+
+    <script src="/assets/app.js" type="module"></script>
+  </body>
+</html>
