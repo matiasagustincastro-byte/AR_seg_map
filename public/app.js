@@ -70,6 +70,7 @@ const elements = {
   mapTooltip: document.querySelector("#mapTooltip"),
   spfMetricSelect: document.querySelector("#spfMetricSelect"),
   spfGroupBySelect: document.querySelector("#spfGroupBySelect"),
+  spfChartTypeSelect: document.querySelector("#spfChartTypeSelect"),
   spfPeriodFilter: document.querySelector("#spfPeriodFilter"),
   spfStatusFilter: document.querySelector("#spfStatusFilter"),
   spfGenderFilter: document.querySelector("#spfGenderFilter"),
@@ -588,6 +589,80 @@ function drawBarChart(canvas, rows, titleElement, descriptionElement, legendElem
   `).join("");
 }
 
+function drawPieChart(canvas, rows, titleElement, descriptionElement, legendElement) {
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return;
+  }
+
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#0d1714";
+  ctx.fillRect(0, 0, width, height);
+
+  const data = rows
+    .slice(0, 12)
+    .map((row) => ({
+      label: String(row.label || "Sin dato"),
+      value: Math.max(0, Number(row.value || 0))
+    }))
+    .filter((row) => row.value > 0);
+
+  if (!data.length) {
+    ctx.fillStyle = "#9db4ad";
+    ctx.font = "20px Segoe UI";
+    ctx.fillText("Sin datos para graficar con estos filtros.", 40, 80);
+    titleElement.textContent = "Sin datos";
+    descriptionElement.textContent = "Probá quitando filtros o cambiando la métrica.";
+    legendElement.innerHTML = "";
+    return;
+  }
+
+  const total = data.reduce((sum, row) => sum + row.value, 0);
+  const centerX = width * 0.42;
+  const centerY = height * 0.5;
+  const radius = Math.min(width, height) * 0.32;
+  let startAngle = -Math.PI / 2;
+
+  data.forEach((row, index) => {
+    const sliceAngle = (row.value / total) * Math.PI * 2;
+    const endAngle = startAngle + sliceAngle;
+
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY);
+    ctx.arc(centerX, centerY, radius, startAngle, endAngle);
+    ctx.closePath();
+    ctx.fillStyle = colors[index % colors.length];
+    ctx.fill();
+
+    ctx.strokeStyle = "#0d1714";
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    const midAngle = startAngle + sliceAngle / 2;
+    const labelX = centerX + Math.cos(midAngle) * (radius + 28);
+    const labelY = centerY + Math.sin(midAngle) * (radius + 28);
+    const pct = `${((row.value / total) * 100).toFixed(1)}%`;
+
+    if (sliceAngle > 0.18) {
+      ctx.fillStyle = "#edf8f4";
+      ctx.font = "12px Segoe UI";
+      ctx.textAlign = labelX < centerX ? "right" : "left";
+      ctx.fillText(pct, labelX, labelY);
+    }
+
+    startAngle = endAngle;
+  });
+
+  ctx.textAlign = "left";
+  titleElement.textContent = `${data.length} porciones SPF`;
+  descriptionElement.textContent = `Total graficado: ${formatNumber(total)}. Se muestran hasta 12 categorias.`;
+  legendElement.innerHTML = data.map((row, index) => `
+    <span><i style="background:${colors[index % colors.length]}"></i>${row.label} · ${((row.value / total) * 100).toFixed(1)}%</span>
+  `).join("");
+}
+
 function spfParams() {
   const params = new URLSearchParams({
     metric: elements.spfMetricSelect?.value || "personas"
@@ -615,13 +690,8 @@ async function loadSpfChart() {
   const params = spfParams();
   params.set("groupBy", elements.spfGroupBySelect?.value || "unidad_provincia");
   const payload = await api(`/spf/chart?${params.toString()}`);
-  drawBarChart(
-    elements.spfChartCanvas,
-    payload.data ?? [],
-    elements.spfChartTitle,
-    elements.spfChartDescription,
-    elements.spfChartLegend
-  );
+  const draw = elements.spfChartTypeSelect?.value === "pie" ? drawPieChart : drawBarChart;
+  draw(elements.spfChartCanvas, payload.data ?? [], elements.spfChartTitle, elements.spfChartDescription, elements.spfChartLegend);
 }
 
 function colorForValue(value, min, max) {
@@ -1327,7 +1397,7 @@ elements.spfClearButton?.addEventListener("click", () => {
   });
   refreshSpf();
 });
-[elements.spfMetricSelect, elements.spfGroupBySelect, elements.spfPeriodFilter, elements.spfStatusFilter, elements.spfGenderFilter, elements.spfJurisdictionFilter, elements.spfProvinceFilter, elements.spfCrimeFilter]
+[elements.spfMetricSelect, elements.spfGroupBySelect, elements.spfChartTypeSelect, elements.spfPeriodFilter, elements.spfStatusFilter, elements.spfGenderFilter, elements.spfJurisdictionFilter, elements.spfProvinceFilter, elements.spfCrimeFilter]
   .forEach((element) => element?.addEventListener("change", refreshSpf));
 
 elements.trendButton?.addEventListener("click", () => loadInsights().catch((error) => setStatus(error.message)));
