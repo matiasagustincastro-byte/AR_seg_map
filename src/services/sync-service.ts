@@ -4,6 +4,7 @@ import { parseAndNormalizeCsv, parseAndNormalizeXlsx } from "../csv/normalize.js
 import { pool } from "../db/pool.js";
 import { upsertRecords } from "../repositories/records.js";
 import { fetchDataset, selectResources, type DatosGobArResource } from "../sources/datos-gobar.js";
+import type { PoolClient } from "pg";
 
 function parseResource(body: Buffer, resource: DatosGobArResource) {
   const format = resource.format.trim().toUpperCase();
@@ -19,6 +20,95 @@ function parseResource(body: Buffer, resource: DatosGobArResource) {
   throw new Error(`Unsupported resource format ${resource.format} for ${resource.id}`);
 }
 
+async function syncDatasetGroup(
+  datasetRefs: string[],
+  baseUrl: string,
+  client: PoolClient,
+  counters: { syncedResources: number; skippedResources: number; failedResources: number; upsertedRecords: number; failures: string[] }
+) {
+  for (const datasetRef of datasetRefs) {
+    let dataset;
+    let resources;
+
+    try {
+      dataset = await fetchDataset(datasetRef, baseUrl);
+      resources = selectResources(dataset, config.resourceFormats);
+    } catch (error) {
+      counters.failedResources += 1;
+      const reason = error instanceof Error ? error.message : "Unknown dataset sync error";
+      counters.failures.push(`${datasetRef}: ${reason}`);
+      continue;
+    }
+
+    for (const resource of resources) {
+      let transactionStarted = false;
+
+      try {
+        const downloaded = await downloadFile(resource.url);
+        const expectedHash = config.expectedResourceHashes.get(resource.id) || resource.hash;
+
+        if (expectedHash && downloaded.sha256 !== expectedHash) {
+          throw new Error(`SHA256 mismatch for ${resource.id}. Expected ${expectedHash}, got ${downloaded.sha256}`);
+        }
+
+        const existing = await client.query(
+          `SELECT id FROM source_files WHERE resource_id = $1 AND sha256 = $2`,
+          [resource.id, downloaded.sha256]
+        );
+
+        if (existing.rowCount) {
+          counters.skippedResources += 1;
+          continue;
+        }
+
+        const records = parseResource(downloaded.body, resource);
+
+        await client.query("BEGIN");
+        transactionStarted = true;
+        const sourceFile = await client.query<{ id: string }>(
+          `INSERT INTO source_files (
+             dataset_id, dataset_title, resource_id, resource_name,
+             url, sha256, etag, last_modified, row_count
+           )
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+           RETURNING id`,
+          [
+            dataset.id,
+            dataset.title,
+            resource.id,
+            resource.name,
+            resource.url,
+            downloaded.sha256,
+            downloaded.etag ?? null,
+            downloaded.lastModified ?? (resource.last_modified ? new Date(resource.last_modified) : null),
+            records.length
+          ]
+        );
+        const sourceFileId = Number(sourceFile.rows[0].id);
+
+        await upsertRecords(client, records, sourceFileId, {
+          datasetId: dataset.id,
+          datasetTitle: dataset.title,
+          resourceId: resource.id,
+          resourceName: resource.name
+        });
+        await client.query("COMMIT");
+
+        counters.syncedResources += 1;
+        counters.upsertedRecords += records.length;
+      } catch (error) {
+        if (transactionStarted) {
+          await client.query("ROLLBACK").catch(() => undefined);
+        }
+
+        counters.failedResources += 1;
+        const reason = error instanceof Error ? error.message : "Unknown resource sync error";
+        counters.failures.push(`${resource.id}: ${reason}`);
+      }
+    }
+  }
+}
+
 export async function runCsvSync() {
   const client = await pool.connect();
 
@@ -28,100 +118,23 @@ export async function runCsvSync() {
   const runId = Number(runResult.rows[0].id);
 
   try {
-    let syncedResources = 0;
-    let skippedResources = 0;
-    let failedResources = 0;
-    let upsertedRecords = 0;
-    const failures: string[] = [];
+    const counters = {
+      syncedResources: 0,
+      skippedResources: 0,
+      failedResources: 0,
+      upsertedRecords: 0,
+      failures: [] as string[]
+    };
 
-    for (const datasetRef of config.datasetIds) {
-      let dataset;
-      let resources;
+    await syncDatasetGroup(config.datasetIds, "https://datos.gob.ar", client, counters);
+    await syncDatasetGroup(config.justiciaDatasetIds, "https://datos.jus.gob.ar", client, counters);
 
-      try {
-        dataset = await fetchDataset(datasetRef);
-        resources = selectResources(dataset, config.resourceFormats);
-      } catch (error) {
-        failedResources += 1;
-        const reason = error instanceof Error ? error.message : "Unknown dataset sync error";
-        failures.push(`${datasetRef}: ${reason}`);
-        continue;
-      }
-
-      for (const resource of resources) {
-        let transactionStarted = false;
-
-        try {
-          const downloaded = await downloadFile(resource.url);
-          const expectedHash = config.expectedResourceHashes.get(resource.id) || resource.hash;
-
-          if (expectedHash && downloaded.sha256 !== expectedHash) {
-            throw new Error(`SHA256 mismatch for ${resource.id}. Expected ${expectedHash}, got ${downloaded.sha256}`);
-          }
-
-          const existing = await client.query(
-            `SELECT id FROM source_files WHERE resource_id = $1 AND sha256 = $2`,
-            [resource.id, downloaded.sha256]
-          );
-
-          if (existing.rowCount) {
-            skippedResources += 1;
-            continue;
-          }
-
-          const records = parseResource(downloaded.body, resource);
-
-          await client.query("BEGIN");
-          transactionStarted = true;
-          const sourceFile = await client.query<{ id: string }>(
-            `INSERT INTO source_files (
-               dataset_id, dataset_title, resource_id, resource_name,
-               url, sha256, etag, last_modified, row_count
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-             RETURNING id`,
-            [
-              dataset.id,
-              dataset.title,
-              resource.id,
-              resource.name,
-              resource.url,
-              downloaded.sha256,
-              downloaded.etag ?? null,
-              downloaded.lastModified ?? (resource.last_modified ? new Date(resource.last_modified) : null),
-              records.length
-            ]
-          );
-          const sourceFileId = Number(sourceFile.rows[0].id);
-
-          await upsertRecords(client, records, sourceFileId, {
-            datasetId: dataset.id,
-            datasetTitle: dataset.title,
-            resourceId: resource.id,
-            resourceName: resource.name
-          });
-          await client.query("COMMIT");
-
-          syncedResources += 1;
-          upsertedRecords += records.length;
-        } catch (error) {
-          if (transactionStarted) {
-            await client.query("ROLLBACK").catch(() => undefined);
-          }
-
-          failedResources += 1;
-          const reason = error instanceof Error ? error.message : "Unknown resource sync error";
-          failures.push(`${resource.id}: ${reason}`);
-        }
-      }
-    }
-
-    const finalStatus = failedResources > 0
+    const finalStatus = counters.failedResources > 0
       ? "failed"
-      : syncedResources === 0
+      : counters.syncedResources === 0
         ? "skipped"
         : "success";
-    const failureSummary = failures.length ? ` Failures: ${failures.slice(0, 3).join(" | ")}` : "";
+    const failureSummary = counters.failures.length ? ` Failures: ${counters.failures.slice(0, 3).join(" | ")}` : "";
 
     await client.query(
       `UPDATE sync_runs
@@ -129,7 +142,7 @@ export async function runCsvSync() {
        WHERE id = $4`,
       [
         finalStatus,
-        `Synced ${syncedResources} resources, skipped ${skippedResources}, failed ${failedResources}, upserted ${upsertedRecords} records.${failureSummary}`,
+        `Synced ${counters.syncedResources} resources, skipped ${counters.skippedResources}, failed ${counters.failedResources}, upserted ${counters.upsertedRecords} records.${failureSummary}`,
         null,
         runId
       ]
@@ -138,10 +151,10 @@ export async function runCsvSync() {
     return {
       runId,
       status: finalStatus,
-      syncedResources,
-      skippedResources,
-      failedResources,
-      records: upsertedRecords
+      syncedResources: counters.syncedResources,
+      skippedResources: counters.skippedResources,
+      failedResources: counters.failedResources,
+      records: counters.upsertedRecords
     };
   } catch (error) {
     await client.query("ROLLBACK").catch(() => undefined);

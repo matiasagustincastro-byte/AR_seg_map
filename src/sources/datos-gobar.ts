@@ -23,8 +23,8 @@ function wait(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-export async function fetchDataset(datasetIdOrSlug: string): Promise<DatosGobArDataset> {
-  const url = new URL("https://datos.gob.ar/api/3/action/package_show");
+export async function fetchDataset(datasetIdOrSlug: string, baseUrl = "https://datos.gob.ar"): Promise<DatosGobArDataset> {
+  const url = new URL("/api/3/action/package_show", baseUrl);
   url.searchParams.set("id", datasetIdOrSlug);
 
   for (let attempt = 1; attempt <= 3; attempt += 1) {
@@ -34,20 +34,20 @@ export async function fetchDataset(datasetIdOrSlug: string): Promise<DatosGobArD
       const payload = await response.json() as PackageShowResponse;
 
       if (!payload.success) {
-        throw new Error(`datos.gob.ar package_show failed for ${datasetIdOrSlug}`);
+        throw new Error(`${baseUrl} package_show failed for ${datasetIdOrSlug}`);
       }
 
       return payload.result;
     }
 
     if (attempt === 3) {
-      throw new Error(`datos.gob.ar package_show failed with HTTP ${response.status}`);
+      throw new Error(`${baseUrl} package_show failed with HTTP ${response.status}`);
     }
 
     await wait(attempt * 800);
   }
 
-  throw new Error(`datos.gob.ar package_show failed for ${datasetIdOrSlug}`);
+  throw new Error(`${baseUrl} package_show failed for ${datasetIdOrSlug}`);
 }
 
 export function selectResources(dataset: DatosGobArDataset, formats: Set<string>): DatosGobArResource[] {

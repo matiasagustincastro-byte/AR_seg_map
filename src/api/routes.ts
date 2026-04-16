@@ -23,6 +23,49 @@ const metricLabels: Record<Metric, string> = {
   tasa_victimas_100k_calculada: "tasa propia de victimas 100k"
 };
 
+const spfDatasetId = "6d0e08b3-041c-40c1-9ea6-962db3747677";
+const spfFieldSchema = z.enum([
+  "unidad",
+  "situacion_procesal",
+  "delito",
+  "edad",
+  "nacionalidad",
+  "genero",
+  "jurisdiccion",
+  "estado_civil",
+  "profesion",
+  "subgrupo",
+  "provincia_nacimiento",
+  "unidad_provincia",
+  "tipo_pena"
+]);
+const spfMetricSchema = z.enum(["personas", "edad_promedio", "pena_anios_promedio"]);
+
+type SpfField = z.infer<typeof spfFieldSchema>;
+type SpfMetric = z.infer<typeof spfMetricSchema>;
+
+const spfFields: { id: SpfField; label: string }[] = [
+  { id: "unidad", label: "Unidad" },
+  { id: "situacion_procesal", label: "Situacion procesal" },
+  { id: "delito", label: "Delito" },
+  { id: "edad", label: "Edad" },
+  { id: "nacionalidad", label: "Nacionalidad" },
+  { id: "genero", label: "Genero" },
+  { id: "jurisdiccion", label: "Jurisdiccion" },
+  { id: "estado_civil", label: "Estado civil" },
+  { id: "profesion", label: "Profesion" },
+  { id: "subgrupo", label: "Subgrupo" },
+  { id: "provincia_nacimiento", label: "Provincia de nacimiento" },
+  { id: "unidad_provincia", label: "Provincia de alojamiento" },
+  { id: "tipo_pena", label: "Tipo de pena" }
+];
+
+const spfMetricLabels: Record<SpfMetric, string> = {
+  personas: "personas alojadas",
+  edad_promedio: "edad promedio",
+  pena_anios_promedio: "años de pena promedio"
+};
+
 type JournalistCategory = {
   id: string;
   label: string;
@@ -306,6 +349,75 @@ function addCommonFilters(
   }
 }
 
+function spfPeriodExpression() {
+  return `substring(resource_name from '(20[0-9]{4})')`;
+}
+
+function spfProvinceExpression() {
+  return `CASE
+    WHEN data->>'unidad_provincia' = 'Ciudad Autónoma de Bs.As.' THEN 'Ciudad Autónoma de Buenos Aires'
+    WHEN data->>'unidad_provincia' LIKE 'Tierra del Fuego%' THEN 'Tierra del Fuego'
+    ELSE data->>'unidad_provincia'
+  END`;
+}
+
+function spfMetricExpression(metric: SpfMetric) {
+  if (metric === "edad_promedio") {
+    return `avg(NULLIF(data->>'edad', '')::numeric)`;
+  }
+
+  if (metric === "pena_anios_promedio") {
+    return `avg(NULLIF(data->>'anios_pena', '')::numeric)`;
+  }
+
+  return `count(*)`;
+}
+
+function spfBaseWhere(metric: SpfMetric) {
+  const where = [`dataset_id = $1`];
+
+  if (metric === "edad_promedio") {
+    where.push(`data->>'edad' ~ '^[0-9]+([.,][0-9]+)?$'`);
+  }
+
+  if (metric === "pena_anios_promedio") {
+    where.push(`data->>'anios_pena' ~ '^[0-9]+([.,][0-9]+)?$'`);
+  }
+
+  return where;
+}
+
+function addSpfFilters(
+  where: string[],
+  values: unknown[],
+  query: Partial<Record<SpfField | "period" | "resourceId", string>>
+) {
+  if (query.period) {
+    values.push(query.period);
+    where.push(`${spfPeriodExpression()} = $${values.length}`);
+  }
+
+  if (query.resourceId) {
+    values.push(query.resourceId);
+    where.push(`resource_id = $${values.length}`);
+  }
+
+  for (const field of spfFields) {
+    const value = query[field.id];
+    if (!value) {
+      continue;
+    }
+
+    const items = value.split(",").map((item) => item.trim()).filter(Boolean);
+    if (!items.length) {
+      continue;
+    }
+
+    values.push(items);
+    where.push(`data->>'${field.id}' = ANY($${values.length})`);
+  }
+}
+
 function pctChange(previous: number, current: number) {
   if (!Number.isFinite(previous) || previous === 0) {
     return null;
@@ -426,6 +538,120 @@ export async function registerRoutes(app: FastifyInstance) {
       crimes: crimes.rows.map((row) => row.value),
       journalistCategories: journalistCategoryOptions
     };
+  });
+
+  app.get("/spf/facets", async () => {
+    const [periods, resources, ...fieldResults] = await Promise.all([
+      pool.query(
+        `SELECT DISTINCT ${spfPeriodExpression()} AS value
+         FROM official_records
+         WHERE dataset_id = $1 AND ${spfPeriodExpression()} IS NOT NULL
+         ORDER BY value DESC`,
+        [spfDatasetId]
+      ),
+      pool.query(
+        `SELECT DISTINCT resource_id, resource_name
+         FROM official_records
+         WHERE dataset_id = $1
+         ORDER BY resource_name ASC`,
+        [spfDatasetId]
+      ),
+      ...spfFields.map((field) => pool.query(
+        `SELECT DISTINCT data->>'${field.id}' AS value
+         FROM official_records
+         WHERE dataset_id = $1
+           AND data ? '${field.id}'
+           AND data->>'${field.id}' <> ''
+         ORDER BY value ASC
+         LIMIT 300`,
+        [spfDatasetId]
+      ))
+    ]);
+
+    return {
+      fields: spfFields,
+      metrics: Object.entries(spfMetricLabels).map(([id, label]) => ({ id, label })),
+      periods: periods.rows.map((row) => row.value),
+      resources: resources.rows,
+      values: Object.fromEntries(spfFields.map((field, index) => [
+        field.id,
+        fieldResults[index].rows.map((row) => row.value)
+      ]))
+    };
+  });
+
+  app.get("/spf/chart", async (request) => {
+    const query = z.object({
+      metric: spfMetricSchema.default("personas"),
+      groupBy: z.union([spfFieldSchema, z.literal("period")]).default("unidad_provincia"),
+      period: z.string().optional(),
+      resourceId: z.string().optional(),
+      unidad: z.string().optional(),
+      situacion_procesal: z.string().optional(),
+      delito: z.string().optional(),
+      edad: z.string().optional(),
+      nacionalidad: z.string().optional(),
+      genero: z.string().optional(),
+      jurisdiccion: z.string().optional(),
+      estado_civil: z.string().optional(),
+      profesion: z.string().optional(),
+      subgrupo: z.string().optional(),
+      provincia_nacimiento: z.string().optional(),
+      unidad_provincia: z.string().optional(),
+      tipo_pena: z.string().optional(),
+      limit: z.coerce.number().int().min(1).max(40).default(15)
+    }).parse(request.query);
+    const values: unknown[] = [spfDatasetId];
+    const where = spfBaseWhere(query.metric);
+    addSpfFilters(where, values, query);
+
+    const groupExpression = query.groupBy === "period"
+      ? spfPeriodExpression()
+      : `data->>'${query.groupBy}'`;
+    values.push(query.limit);
+
+    const { rows } = await pool.query(
+      `SELECT
+         coalesce(nullif(${groupExpression}, ''), 'Sin dato') AS label,
+         ${spfMetricExpression(query.metric)}::float AS value
+       FROM official_records
+       WHERE ${where.join(" AND ")}
+       GROUP BY 1
+       ORDER BY value DESC NULLS LAST
+       LIMIT $${values.length}`,
+      values
+    );
+
+    return { data: rows, label: `${spfMetricLabels[query.metric]} por ${query.groupBy}` };
+  });
+
+  app.get("/spf/map", async (request) => {
+    const query = z.object({
+      metric: spfMetricSchema.default("personas"),
+      period: z.string().optional(),
+      resourceId: z.string().optional(),
+      situacion_procesal: z.string().optional(),
+      delito: z.string().optional(),
+      genero: z.string().optional(),
+      jurisdiccion: z.string().optional()
+    }).parse(request.query);
+    const values: unknown[] = [spfDatasetId];
+    const where = spfBaseWhere(query.metric);
+    where.push(`data ? 'unidad_provincia'`, `data->>'unidad_provincia' <> ''`);
+    addSpfFilters(where, values, query);
+
+    const { rows } = await pool.query(
+      `SELECT
+         ${spfProvinceExpression()} AS province,
+         ${spfMetricExpression(query.metric)}::float AS value
+       FROM official_records
+       WHERE ${where.join(" AND ")}
+       GROUP BY 1
+       ORDER BY value DESC NULLS LAST`,
+      values
+    );
+
+    return { data: rows };
   });
 
   app.get("/journalist/categories", async () => {

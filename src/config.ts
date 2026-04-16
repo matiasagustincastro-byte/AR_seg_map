@@ -9,6 +9,7 @@ const envSchema = z.object({
     "seguridad-snic---provincial-estadisticas-criminales-republica-argentina-por-provincias",
     "seguridad-estadisticas-sobre-uso-racional-fuerza-empleo-armas-fuego-fuerzas-federales"
   ].join(",")),
+  JUSTICIA_DATASET_IDS: z.string().min(1).default("internos-del-servicio-penitenciario-federal-spf"),
   RESOURCE_FORMATS: z.string().min(1).default("CSV,XLSX"),
   SYNC_CRON: z.string().min(1).default("0 0 * * *"),
   EXPECTED_RESOURCE_SHA256: z.string().optional().default("")
@@ -32,6 +33,7 @@ function parseExpectedHashes(value: string): Map<string, string> {
 export const config = {
   ...env,
   datasetIds: splitCsv(env.DATASET_IDS),
+  justiciaDatasetIds: splitCsv(env.JUSTICIA_DATASET_IDS),
   resourceFormats: new Set(splitCsv(env.RESOURCE_FORMATS).map((format) => format.toUpperCase())),
   expectedResourceHashes: parseExpectedHashes(env.EXPECTED_RESOURCE_SHA256)
 };

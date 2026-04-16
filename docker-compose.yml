@@ -22,6 +22,7 @@ services:
       PORT: 8011
       DATABASE_URL: postgres://postgres:postgres@postgres:5432/csv_ingestion
       DATASET_IDS: seguridad-snic---total-pais-estadisticas-criminales-republica-argentina,seguridad-snic---provincial-estadisticas-criminales-republica-argentina-por-provincias,seguridad-estadisticas-sobre-uso-racional-fuerza-empleo-armas-fuego-fuerzas-federales
+      JUSTICIA_DATASET_IDS: internos-del-servicio-penitenciario-federal-spf
       RESOURCE_FORMATS: CSV,XLSX
       SYNC_CRON: 0 0 * * *
       EXPECTED_RESOURCE_SHA256: ""

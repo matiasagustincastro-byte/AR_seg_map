@@ -24,6 +24,7 @@ copy .env.example .env
 Edita `.env`:
 
 - `DATASET_IDS`: datasets oficiales de datos.gob.ar a consultar por API CKAN.
+- `JUSTICIA_DATASET_IDS`: datasets oficiales de datos.jus.gob.ar a consultar por API CKAN, incluyendo Internos del Servicio Penitenciario Federal - SPF.
 - `RESOURCE_FORMATS`: formatos a ingerir. Queda en `CSV,XLSX` porque el dataset de uso racional de la fuerza publica XLSX.
 - `EXPECTED_RESOURCE_SHA256`: opcional si el organismo publica hashes por recurso.
 - `SYNC_CRON`: horario del job.
@@ -46,6 +47,9 @@ docker compose exec app npm run ingest:once
 GET /
 GET /health
 GET /datasets
+GET /spf/facets
+GET /spf/chart?metric=personas&groupBy=delito&genero=MASCULINO
+GET /spf/map?metric=personas&situacion_procesal=CONDENADO
 GET /records?q=texto&datasetId=seguridad_1&resourceId=seguridad_1.2&page=1&pageSize=25
 GET /records/:externalId
 GET /sync-runs?limit=20

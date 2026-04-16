@@ -12,6 +12,7 @@
       <nav aria-label="Principal">
         <a href="#operacion">Operacion</a>
         <a href="#analisis">Analisis</a>
+        <a href="#spf">SPF</a>
         <a href="#inteligencia">Inteligencia</a>
         <a href="#periodistas">Periodistas</a>
         <a href="#registros">Registros</a>
@@ -141,6 +142,107 @@
               <span>Mayor</span>
             </div>
             <div id="mapTooltip" class="map-tooltip">Seleccioná filtros para ver valores por provincia.</div>
+          </aside>
+        </div>
+      </section>
+
+      <section id="spf" class="workspace">
+        <div class="section-title">
+          <div>
+            <p class="eyebrow">Sistema penitenciario</p>
+            <h2>Internos del Servicio Penitenciario Federal</h2>
+          </div>
+        </div>
+
+        <form class="control-grid spf-controls">
+          <label>
+            Metrica
+            <select id="spfMetricSelect">
+              <option value="personas">Personas alojadas</option>
+              <option value="edad_promedio">Edad promedio</option>
+              <option value="pena_anios_promedio">Años de pena promedio</option>
+            </select>
+          </label>
+          <label>
+            Agrupar por
+            <select id="spfGroupBySelect">
+              <option value="unidad_provincia">Provincia de alojamiento</option>
+              <option value="unidad">Unidad</option>
+              <option value="situacion_procesal">Situacion procesal</option>
+              <option value="delito">Delito</option>
+              <option value="genero">Genero</option>
+              <option value="jurisdiccion">Jurisdiccion</option>
+              <option value="nacionalidad">Nacionalidad</option>
+              <option value="tipo_pena">Tipo de pena</option>
+              <option value="period">Periodo</option>
+            </select>
+          </label>
+          <label>
+            Periodo
+            <select id="spfPeriodFilter">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Situacion
+            <select id="spfStatusFilter">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label>
+            Genero
+            <select id="spfGenderFilter">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <label>
+            Jurisdiccion
+            <select id="spfJurisdictionFilter">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label class="wide">
+            Provincia de alojamiento
+            <select id="spfProvinceFilter">
+              <option value="">Todas</option>
+            </select>
+          </label>
+          <label class="wide">
+            Delito
+            <select id="spfCrimeFilter">
+              <option value="">Todos</option>
+            </select>
+          </label>
+          <div class="analysis-actions">
+            <button id="spfClearButton" type="button" class="secondary">Limpiar SPF</button>
+            <button id="spfDrawButton" type="button">Graficar SPF</button>
+          </div>
+        </form>
+
+        <div class="chart-layout">
+          <div class="chart-panel">
+            <canvas id="spfChartCanvas" width="1000" height="460" aria-label="Grafico penitenciario"></canvas>
+          </div>
+          <aside class="chart-summary">
+            <strong id="spfChartTitle">Sin datos SPF graficados</strong>
+            <p id="spfChartDescription">Elegí filtros para analizar internos por campo expuesto del dataset.</p>
+            <div id="spfChartLegend" class="legend"></div>
+          </aside>
+        </div>
+
+        <div class="map-layout">
+          <div class="map-panel">
+            <svg id="spfArgentinaMap" viewBox="0 0 420 780" role="img" aria-label="Mapa penitenciario por provincia"></svg>
+          </div>
+          <aside class="map-summary">
+            <strong id="spfMapTitle">Mapa SPF por alojamiento</strong>
+            <p id="spfMapDescription">Distribucion por provincia de la unidad penitenciaria.</p>
+            <div class="map-scale">
+              <span>Menor</span>
+              <i></i>
+              <span>Mayor</span>
+            </div>
+            <div id="spfMapTooltip" class="map-tooltip">Seleccioná filtros para ver valores SPF por provincia.</div>
           </aside>
         </div>
       </section>

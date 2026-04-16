@@ -4,6 +4,7 @@ const state = {
   total: 0,
   facets: { years: [], provinces: [], crimes: [], journalistCategories: [] },
   records: [],
+  spfFacets: { periods: [], values: {} },
   hasSearched: false,
   compareDefaultsApplied: false,
   journalistRadarExpanded: false,
@@ -66,7 +67,25 @@ const elements = {
   argentinaMap: document.querySelector("#argentinaMap"),
   mapTitle: document.querySelector("#mapTitle"),
   mapDescription: document.querySelector("#mapDescription"),
-  mapTooltip: document.querySelector("#mapTooltip")
+  mapTooltip: document.querySelector("#mapTooltip"),
+  spfMetricSelect: document.querySelector("#spfMetricSelect"),
+  spfGroupBySelect: document.querySelector("#spfGroupBySelect"),
+  spfPeriodFilter: document.querySelector("#spfPeriodFilter"),
+  spfStatusFilter: document.querySelector("#spfStatusFilter"),
+  spfGenderFilter: document.querySelector("#spfGenderFilter"),
+  spfJurisdictionFilter: document.querySelector("#spfJurisdictionFilter"),
+  spfProvinceFilter: document.querySelector("#spfProvinceFilter"),
+  spfCrimeFilter: document.querySelector("#spfCrimeFilter"),
+  spfDrawButton: document.querySelector("#spfDrawButton"),
+  spfClearButton: document.querySelector("#spfClearButton"),
+  spfChartCanvas: document.querySelector("#spfChartCanvas"),
+  spfChartTitle: document.querySelector("#spfChartTitle"),
+  spfChartDescription: document.querySelector("#spfChartDescription"),
+  spfChartLegend: document.querySelector("#spfChartLegend"),
+  spfArgentinaMap: document.querySelector("#spfArgentinaMap"),
+  spfMapTitle: document.querySelector("#spfMapTitle"),
+  spfMapDescription: document.querySelector("#spfMapDescription"),
+  spfMapTooltip: document.querySelector("#spfMapTooltip")
 };
 
 function formatNumber(value) {
@@ -85,6 +104,7 @@ function normalizeName(value) {
     .normalize("NFD")
     .replace(/\p{Diacritic}/gu, "")
     .toLowerCase()
+    .replace(/^ciudad autonoma de bs\.?as\.?$/, "caba")
     .replace(/^ciudad autonoma de buenos aires$/, "caba")
     .replace(/^tierra del fuego, antartida e islas del atlantico sur$/, "tierra del fuego")
     .trim();
@@ -229,6 +249,16 @@ async function loadFacets() {
     }
     state.compareDefaultsApplied = true;
   }
+}
+
+async function loadSpfFacets() {
+  state.spfFacets = await api("/spf/facets");
+  fillSelect(elements.spfPeriodFilter, state.spfFacets.periods || [], "Todos");
+  fillSelect(elements.spfStatusFilter, state.spfFacets.values?.situacion_procesal || [], "Todas");
+  fillSelect(elements.spfGenderFilter, state.spfFacets.values?.genero || [], "Todos");
+  fillSelect(elements.spfJurisdictionFilter, state.spfFacets.values?.jurisdiccion || [], "Todas");
+  fillSelect(elements.spfProvinceFilter, state.spfFacets.values?.unidad_provincia || [], "Todas");
+  fillSelect(elements.spfCrimeFilter, state.spfFacets.values?.delito || [], "Todos");
 }
 
 function recordValue(record, key) {
@@ -478,6 +508,122 @@ async function loadChart() {
   drawChart(payload.data ?? []);
 }
 
+function drawBarChart(canvas, rows, titleElement, descriptionElement, legendElement) {
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return;
+  }
+
+  const ctx = canvas.getContext("2d");
+  const width = canvas.width;
+  const height = canvas.height;
+  ctx.clearRect(0, 0, width, height);
+  ctx.fillStyle = "#0d1714";
+  ctx.fillRect(0, 0, width, height);
+
+  if (!rows.length) {
+    ctx.fillStyle = "#9db4ad";
+    ctx.font = "20px Segoe UI";
+    ctx.fillText("Sin datos para graficar con estos filtros.", 40, 80);
+    titleElement.textContent = "Sin datos";
+    descriptionElement.textContent = "Probá quitando filtros o cambiando la métrica.";
+    legendElement.innerHTML = "";
+    return;
+  }
+
+  const data = rows.slice(0, 15).map((row) => ({
+    label: String(row.label || "Sin dato"),
+    value: Number(row.value || 0)
+  }));
+  const maxValue = Math.max(...data.map((row) => row.value), 1);
+  const padding = { left: 72, right: 28, top: 32, bottom: 118 };
+  const plotWidth = width - padding.left - padding.right;
+  const plotHeight = height - padding.top - padding.bottom;
+  const gap = 10;
+  const barWidth = Math.max(16, (plotWidth - gap * (data.length - 1)) / data.length);
+
+  ctx.strokeStyle = "#254139";
+  ctx.beginPath();
+  ctx.moveTo(padding.left, padding.top);
+  ctx.lineTo(padding.left, height - padding.bottom);
+  ctx.lineTo(width - padding.right, height - padding.bottom);
+  ctx.stroke();
+
+  ctx.fillStyle = "#9db4ad";
+  ctx.font = "14px Segoe UI";
+  for (let i = 0; i <= 4; i += 1) {
+    const value = (maxValue / 4) * i;
+    const y = height - padding.bottom - (value / maxValue) * plotHeight;
+    ctx.fillText(formatNumber(value), 8, y + 5);
+    ctx.strokeStyle = "#142823";
+    ctx.beginPath();
+    ctx.moveTo(padding.left, y);
+    ctx.lineTo(width - padding.right, y);
+    ctx.stroke();
+  }
+
+  data.forEach((row, index) => {
+    const x = padding.left + index * (barWidth + gap);
+    const barHeight = (row.value / maxValue) * plotHeight;
+    const y = height - padding.bottom - barHeight;
+    ctx.fillStyle = colors[index % colors.length];
+    ctx.fillRect(x, y, barWidth, barHeight);
+    ctx.fillStyle = "#edf8f4";
+    ctx.font = "12px Segoe UI";
+    ctx.textAlign = "center";
+    ctx.fillText(formatCompactNumber(row.value), x + barWidth / 2, y - 8);
+    ctx.save();
+    ctx.translate(x + barWidth / 2, height - padding.bottom + 14);
+    ctx.rotate(-Math.PI / 4);
+    ctx.fillStyle = "#c4d6d0";
+    ctx.textAlign = "right";
+    ctx.fillText(row.label.slice(0, 34), 0, 0);
+    ctx.restore();
+  });
+
+  ctx.textAlign = "left";
+  titleElement.textContent = `${data.length} categorias SPF`;
+  descriptionElement.textContent = "Valores agregados desde Internos del Servicio Penitenciario Federal - SPF.";
+  legendElement.innerHTML = data.slice(0, 8).map((row, index) => `
+    <span><i style="background:${colors[index % colors.length]}"></i>${row.label}</span>
+  `).join("");
+}
+
+function spfParams() {
+  const params = new URLSearchParams({
+    metric: elements.spfMetricSelect?.value || "personas"
+  });
+
+  const filterMap = [
+    ["period", elements.spfPeriodFilter],
+    ["situacion_procesal", elements.spfStatusFilter],
+    ["genero", elements.spfGenderFilter],
+    ["jurisdiccion", elements.spfJurisdictionFilter],
+    ["unidad_provincia", elements.spfProvinceFilter],
+    ["delito", elements.spfCrimeFilter]
+  ];
+
+  for (const [key, element] of filterMap) {
+    if (element?.value) {
+      params.set(key, element.value);
+    }
+  }
+
+  return params;
+}
+
+async function loadSpfChart() {
+  const params = spfParams();
+  params.set("groupBy", elements.spfGroupBySelect?.value || "unidad_provincia");
+  const payload = await api(`/spf/chart?${params.toString()}`);
+  drawBarChart(
+    elements.spfChartCanvas,
+    payload.data ?? [],
+    elements.spfChartTitle,
+    elements.spfChartDescription,
+    elements.spfChartLegend
+  );
+}
+
 function colorForValue(value, min, max) {
   if (!Number.isFinite(value) || max <= min) {
     return "#1f6652";
@@ -659,6 +805,68 @@ async function loadMap() {
       elements.mapTooltip.innerHTML = `<strong>${name}</strong><br />Valor: ${formatNumber(value)}`;
     });
   });
+}
+
+async function renderProvinceMap(targetMap, tooltip, title, description, endpoint, params, titleText, descriptionText) {
+  if (!(targetMap instanceof SVGElement)) {
+    return;
+  }
+
+  const [geojson, valuesPayload] = await Promise.all([
+    api("/assets/argentina-provinces.geojson"),
+    api(`${endpoint}?${params.toString()}`)
+  ]);
+  const values = new Map((valuesPayload.data ?? []).map((row) => [normalizeName(row.province), Number(row.value || 0)]));
+  const allCoordinates = geojson.features.flatMap((feature) => collectCoordinates(feature.geometry));
+  const bounds = allCoordinates.reduce((acc, [lon, lat]) => ({
+    minLon: Math.min(acc.minLon, lon),
+    maxLon: Math.max(acc.maxLon, lon),
+    minLat: Math.min(acc.minLat, lat),
+    maxLat: Math.max(acc.maxLat, lat)
+  }), { ...mapFocusBounds });
+  const size = { width: 420, height: 760 };
+  const numericValues = [...values.values()].filter((value) => Number.isFinite(value));
+  const positiveValues = numericValues.filter((value) => value > 0);
+  const colorMin = positiveValues.length ? quantile(positiveValues, 0.05) : 0;
+  const colorMax = positiveValues.length ? quantile(positiveValues, 0.95) : 1;
+  const displayMax = Math.max(...numericValues, 1);
+
+  targetMap.innerHTML = geojson.features.map((feature) => {
+    const name = feature.properties?.nombre || feature.properties?.nam || "";
+    const normalized = normalizeName(name);
+    const value = values.get(normalized) ?? 0;
+    const path = geometryToPath(feature.geometry, bounds, size);
+    if (!path) {
+      return "";
+    }
+    return `<path class="province-shape" d="${path}" fill="${colorForValue(value, colorMin, colorMax)}" data-name="${name}" data-value="${value}" />`;
+  }).join("");
+
+  title.textContent = titleText;
+  description.textContent = descriptionText;
+  tooltip.textContent = `Mayor valor: ${formatNumber(displayMax)}. La escala usa percentiles para cubrir de verde a rojo.`;
+
+  targetMap.querySelectorAll(".province-shape").forEach((shape) => {
+    shape.addEventListener("mouseenter", () => {
+      const name = shape.getAttribute("data-name") || "Provincia";
+      const value = Number(shape.getAttribute("data-value") || 0);
+      tooltip.innerHTML = `<strong>${name}</strong><br />Valor: ${formatNumber(value)}`;
+    });
+  });
+}
+
+async function loadSpfMap() {
+  const params = spfParams();
+  await renderProvinceMap(
+    elements.spfArgentinaMap,
+    elements.spfMapTooltip,
+    elements.spfMapTitle,
+    elements.spfMapDescription,
+    "/spf/map",
+    params,
+    "Mapa SPF por alojamiento",
+    "Distribucion de internos por provincia de la unidad penitenciaria."
+  );
 }
 
 function currentAnalysisParams() {
@@ -1026,9 +1234,9 @@ function refreshJournalistFindingsIfExpanded() {
 
 async function refreshAll(message = "Panel actualizado.") {
   try {
-    await Promise.all([loadStats(), loadFacets()]);
+    await Promise.all([loadStats(), loadFacets(), loadSpfFacets()]);
     renderRecords();
-    const refreshTasks = [loadChart(), loadMap(), loadInsights()];
+    const refreshTasks = [loadChart(), loadMap(), loadInsights(), loadSpfChart(), loadSpfMap()];
     if (state.journalistRadarExpanded) {
       refreshTasks.push(loadJournalistFindings());
     }
@@ -1098,6 +1306,29 @@ elements.clearAnalysisButton?.addEventListener("click", () => {
 
 [elements.rankingTypeFilter, elements.alertThresholdFilter]
   .forEach((element) => element?.addEventListener("change", () => loadInsights().catch((error) => setStatus(error.message))));
+
+function refreshSpf() {
+  return Promise.all([loadSpfChart(), loadSpfMap()]).catch((error) => setStatus(error.message));
+}
+
+elements.spfDrawButton?.addEventListener("click", refreshSpf);
+elements.spfClearButton?.addEventListener("click", () => {
+  [
+    elements.spfPeriodFilter,
+    elements.spfStatusFilter,
+    elements.spfGenderFilter,
+    elements.spfJurisdictionFilter,
+    elements.spfProvinceFilter,
+    elements.spfCrimeFilter
+  ].forEach((element) => {
+    if (element instanceof HTMLSelectElement) {
+      element.value = "";
+    }
+  });
+  refreshSpf();
+});
+[elements.spfMetricSelect, elements.spfGroupBySelect, elements.spfPeriodFilter, elements.spfStatusFilter, elements.spfGenderFilter, elements.spfJurisdictionFilter, elements.spfProvinceFilter, elements.spfCrimeFilter]
+  .forEach((element) => element?.addEventListener("change", refreshSpf));
 
 elements.trendButton?.addEventListener("click", () => loadInsights().catch((error) => setStatus(error.message)));
 elements.reportButton?.addEventListener("click", openReport);
