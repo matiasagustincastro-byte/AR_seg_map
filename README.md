@@ -25,7 +25,7 @@ Edita `.env`:
 
 - `DATASET_IDS`: datasets oficiales de datos.gob.ar a consultar por API CKAN.
 - `JUSTICIA_DATASET_IDS`: datasets oficiales de datos.jus.gob.ar a consultar por API CKAN, incluyendo Internos del Servicio Penitenciario Federal - SPF.
-- `RESOURCE_FORMATS`: formatos a ingerir. Queda en `CSV,XLSX` porque el dataset de uso racional de la fuerza publica XLSX.
+- `RESOURCE_FORMATS`: formatos a ingerir. Queda en `CSV,XLSX,ZIP` para incluir SNIC, uso racional de la fuerza publica y los historicos SPF.
 - `EXPECTED_RESOURCE_SHA256`: opcional si el organismo publica hashes por recurso.
 - `SYNC_CRON`: horario del job.
 

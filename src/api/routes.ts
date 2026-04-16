@@ -350,7 +350,11 @@ function addCommonFilters(
 }
 
 function spfPeriodExpression() {
-  return `substring(resource_name from '(20[0-9]{4})')`;
+  return `coalesce(nullif(data->>'periodo', ''), substring(resource_name from '(20[0-9]{4})'))`;
+}
+
+function spfYearExpression() {
+  return `coalesce(nullif(data->>'anio', ''), substring(coalesce(nullif(data->>'periodo', ''), resource_name) from '(20[0-9]{2})'))`;
 }
 
 function spfProvinceExpression() {
@@ -390,8 +394,13 @@ function spfBaseWhere(metric: SpfMetric) {
 function addSpfFilters(
   where: string[],
   values: unknown[],
-  query: Partial<Record<SpfField | "period" | "resourceId", string>>
+  query: Partial<Record<SpfField | "year" | "period" | "resourceId", string>>
 ) {
+  if (query.year) {
+    values.push(query.year);
+    where.push(`${spfYearExpression()} = $${values.length}`);
+  }
+
   if (query.period) {
     values.push(query.period);
     where.push(`${spfPeriodExpression()} = $${values.length}`);
@@ -541,7 +550,14 @@ export async function registerRoutes(app: FastifyInstance) {
   });
 
   app.get("/spf/facets", async () => {
-    const [periods, resources, ...fieldResults] = await Promise.all([
+    const [years, periods, resources, ...fieldResults] = await Promise.all([
+      pool.query(
+        `SELECT DISTINCT ${spfYearExpression()} AS value
+         FROM official_records
+         WHERE dataset_id = $1 AND ${spfYearExpression()} IS NOT NULL
+         ORDER BY value DESC`,
+        [spfDatasetId]
+      ),
       pool.query(
         `SELECT DISTINCT ${spfPeriodExpression()} AS value
          FROM official_records
@@ -571,6 +587,7 @@ export async function registerRoutes(app: FastifyInstance) {
     return {
       fields: spfFields,
       metrics: Object.entries(spfMetricLabels).map(([id, label]) => ({ id, label })),
+      years: years.rows.map((row) => row.value),
       periods: periods.rows.map((row) => row.value),
       resources: resources.rows,
       values: Object.fromEntries(spfFields.map((field, index) => [
@@ -584,6 +601,7 @@ export async function registerRoutes(app: FastifyInstance) {
     const query = z.object({
       metric: spfMetricSchema.default("personas"),
       groupBy: z.union([spfFieldSchema, z.literal("period")]).default("unidad_provincia"),
+      year: z.string().optional(),
       period: z.string().optional(),
       resourceId: z.string().optional(),
       unidad: z.string().optional(),
@@ -628,6 +646,7 @@ export async function registerRoutes(app: FastifyInstance) {
   app.get("/spf/map", async (request) => {
     const query = z.object({
       metric: spfMetricSchema.default("personas"),
+      year: z.string().optional(),
       period: z.string().optional(),
       resourceId: z.string().optional(),
       situacion_procesal: z.string().optional(),

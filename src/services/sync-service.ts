@@ -1,6 +1,6 @@
 import { config } from "../config.js";
 import { downloadFile } from "../csv/download.js";
-import { parseAndNormalizeCsv, parseAndNormalizeXlsx } from "../csv/normalize.js";
+import { parseAndNormalizeCsv, parseAndNormalizeXlsx, parseAndNormalizeZip } from "../csv/normalize.js";
 import { pool } from "../db/pool.js";
 import { upsertRecords } from "../repositories/records.js";
 import { fetchDataset, selectResources, type DatosGobArResource } from "../sources/datos-gobar.js";
@@ -15,6 +15,10 @@ function parseResource(body: Buffer, resource: DatosGobArResource) {
 
   if (format === "XLSX") {
     return parseAndNormalizeXlsx(body, resource.id);
+  }
+
+  if (format === "ZIP") {
+    return parseAndNormalizeZip(body, resource.id);
   }
 
   throw new Error(`Unsupported resource format ${resource.format} for ${resource.id}`);

@@ -4,7 +4,7 @@ const state = {
   total: 0,
   facets: { years: [], provinces: [], crimes: [], journalistCategories: [] },
   records: [],
-  spfFacets: { periods: [], values: {} },
+  spfFacets: { years: [], periods: [], values: {} },
   hasSearched: false,
   compareDefaultsApplied: false,
   journalistRadarExpanded: false,
@@ -71,7 +71,7 @@ const elements = {
   spfMetricSelect: document.querySelector("#spfMetricSelect"),
   spfGroupBySelect: document.querySelector("#spfGroupBySelect"),
   spfChartTypeSelect: document.querySelector("#spfChartTypeSelect"),
-  spfPeriodFilter: document.querySelector("#spfPeriodFilter"),
+  spfYearFilter: document.querySelector("#spfYearFilter"),
   spfStatusFilter: document.querySelector("#spfStatusFilter"),
   spfGenderFilter: document.querySelector("#spfGenderFilter"),
   spfJurisdictionFilter: document.querySelector("#spfJurisdictionFilter"),
@@ -254,7 +254,7 @@ async function loadFacets() {
 
 async function loadSpfFacets() {
   state.spfFacets = await api("/spf/facets");
-  fillSelect(elements.spfPeriodFilter, state.spfFacets.periods || [], "Todos");
+  fillSelect(elements.spfYearFilter, state.spfFacets.years || [], "Todos");
   fillSelect(elements.spfStatusFilter, state.spfFacets.values?.situacion_procesal || [], "Todas");
   fillSelect(elements.spfGenderFilter, state.spfFacets.values?.genero || [], "Todos");
   fillSelect(elements.spfJurisdictionFilter, state.spfFacets.values?.jurisdiccion || [], "Todas");
@@ -669,7 +669,7 @@ function spfParams() {
   });
 
   const filterMap = [
-    ["period", elements.spfPeriodFilter],
+    ["year", elements.spfYearFilter],
     ["situacion_procesal", elements.spfStatusFilter],
     ["genero", elements.spfGenderFilter],
     ["jurisdiccion", elements.spfJurisdictionFilter],
@@ -1384,7 +1384,7 @@ function refreshSpf() {
 elements.spfDrawButton?.addEventListener("click", refreshSpf);
 elements.spfClearButton?.addEventListener("click", () => {
   [
-    elements.spfPeriodFilter,
+    elements.spfYearFilter,
     elements.spfStatusFilter,
     elements.spfGenderFilter,
     elements.spfJurisdictionFilter,
@@ -1397,7 +1397,7 @@ elements.spfClearButton?.addEventListener("click", () => {
   });
   refreshSpf();
 });
-[elements.spfMetricSelect, elements.spfGroupBySelect, elements.spfChartTypeSelect, elements.spfPeriodFilter, elements.spfStatusFilter, elements.spfGenderFilter, elements.spfJurisdictionFilter, elements.spfProvinceFilter, elements.spfCrimeFilter]
+[elements.spfMetricSelect, elements.spfGroupBySelect, elements.spfChartTypeSelect, elements.spfYearFilter, elements.spfStatusFilter, elements.spfGenderFilter, elements.spfJurisdictionFilter, elements.spfProvinceFilter, elements.spfCrimeFilter]
   .forEach((element) => element?.addEventListener("change", refreshSpf));
 
 elements.trendButton?.addEventListener("click", () => loadInsights().catch((error) => setStatus(error.message)));
