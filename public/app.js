@@ -1381,8 +1381,23 @@ function refreshSpf() {
   return Promise.all([loadSpfChart(), loadSpfMap()]).catch((error) => setStatus(error.message));
 }
 
+function resetSelect(element, value = "") {
+  if (!(element instanceof HTMLSelectElement)) {
+    return;
+  }
+
+  element.value = value;
+  if (element.value !== value) {
+    element.selectedIndex = 0;
+  }
+}
+
 elements.spfDrawButton?.addEventListener("click", refreshSpf);
-elements.spfClearButton?.addEventListener("click", () => {
+elements.spfClearButton?.addEventListener("click", async (event) => {
+  event.preventDefault();
+  resetSelect(elements.spfMetricSelect, "personas");
+  resetSelect(elements.spfGroupBySelect, "unidad_provincia");
+  resetSelect(elements.spfChartTypeSelect, "bar");
   [
     elements.spfYearFilter,
     elements.spfStatusFilter,
@@ -1390,12 +1405,9 @@ elements.spfClearButton?.addEventListener("click", () => {
     elements.spfJurisdictionFilter,
     elements.spfProvinceFilter,
     elements.spfCrimeFilter
-  ].forEach((element) => {
-    if (element instanceof HTMLSelectElement) {
-      element.value = "";
-    }
-  });
-  refreshSpf();
+  ].forEach((element) => resetSelect(element));
+  setStatus("Filtros SPF limpios.");
+  await refreshSpf();
 });
 [elements.spfMetricSelect, elements.spfGroupBySelect, elements.spfChartTypeSelect, elements.spfYearFilter, elements.spfStatusFilter, elements.spfGenderFilter, elements.spfJurisdictionFilter, elements.spfProvinceFilter, elements.spfCrimeFilter]
   .forEach((element) => element?.addEventListener("change", refreshSpf));
